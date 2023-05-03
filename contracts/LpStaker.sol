@@ -4,9 +4,9 @@ pragma solidity =0.8.19;
 import "./interfaces/ILpStaker.sol";
 import "./interfaces/IERC20.sol";
 import "./interfaces/uniswap/INonfungiblePositionManager.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./common/Pausable.sol";
 import "./common/SafeERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract LpStaker is ILpStaker, ReentrancyGuard, Pausable, IERC721Receiver {
     using SafeERC20 for IERC20;
@@ -47,7 +47,7 @@ contract LpStaker is ILpStaker, ReentrancyGuard, Pausable, IERC721Receiver {
         minLiquidity = _minLiquidity;
     }
 
-    function setCurrentIncentiveKey(IUniswapV3Staker.IncentiveKey memory key) external onlyAdmin {
+    function setCurrentIncentiveKey(IUniswapV3Staker.IncentiveKey memory key) external onlyAdminOrOperator {
         require(key.startTime <= block.timestamp && key.endTime > block.timestamp, "Staker: not stakable incentive key");
         require(address(key.rewardToken) == rewardToken, "Staker: rewardToken is not matched");
         require(address(key.pool) == pool, "Staker: pool is not matched");

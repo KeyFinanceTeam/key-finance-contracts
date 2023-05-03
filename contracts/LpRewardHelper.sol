@@ -51,20 +51,20 @@ contract LpRewardHelper is ILpRewardHelper {
     }
 
     function _collectibleFee(address pool, uint256 tokenId) internal view returns (uint256 tokensOwed0, uint256 tokensOwed1) {
-        (, , , , , int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 prevFeeGrowthInside0LastX128, uint256 prevFeeGrowthInside1LastX128, , ) =
+        (, , , , , int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 prevFeeGrowthInside0LastX128, uint256 prevFeeGrowthInside1LastX128, , ) = 
             INonfungiblePositionManager(nonfungiblePositionManager).positions(tokenId);
 
         if (liquidity > 0) {
             (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) =
                 IUniswapV3Pool(pool).positions(computePositionKey(address(nonfungiblePositionManager), tickLower, tickUpper));
 
-            tokensOwed0 =
+            tokensOwed0 = 
                 Math.mulDiv(
                     feeGrowthInside0LastX128 - prevFeeGrowthInside0LastX128,
                     liquidity,
                     Q128
                 );
-            tokensOwed1 =
+            tokensOwed1 = 
                 Math.mulDiv(
                     feeGrowthInside1LastX128 - prevFeeGrowthInside1LastX128,
                     liquidity,

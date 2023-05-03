@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.19;
 
-import "./OperatorAdminable.sol";
+import "./AdminableInitializable.sol";
 
-abstract contract Pausable is OperatorAdminable {
+abstract contract PausableInitializable is AdminableInitializable {
     bool public paused;
 
     event Paused();
     event Resumed();
 
-    constructor(address _admin) Adminable(_admin) {}
+    constructor() {}
+
+    function __Pausable_init(address _admin) internal {
+        __Adminable_init(_admin);
+    }
 
     modifier whenNotPaused() {
         require(!paused, "paused");

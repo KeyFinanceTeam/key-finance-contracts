@@ -3,6 +3,7 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox":"^2.0.2",
     "@openzeppelin/contracts": "^4.8.3",
+    "@openzeppelin/contracts-upgradeable": "^4.8.3",
     "ethers": "^5.7.2",
     "hardhat": "^2.12.7",
     "ts-node": "^10.9.1"

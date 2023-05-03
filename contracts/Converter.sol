@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity =0.8.19;
 
+import "./interfaces/IConfig.sol";
 import "./interfaces/IConverter.sol";
 import "./interfaces/IRewardTracker.sol";
 import "./interfaces/ITransferReceiver.sol";
+import "./interfaces/IConvertingFeeCalculator.sol";
 import "./interfaces/IERC20.sol";
-import "./common/Adminable.sol";
 import "./common/ConfigUser.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./common/Pausable.sol";
-import "./TransferReceiver.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title Converter
@@ -31,13 +32,15 @@ import "./TransferReceiver.sol";
  * This contract contains the necessary functions for the above process.
  * Additionally, it provides an admin function for creating MPkey from GMX/esGMX, which is necessary for setting up the DEX pool initially.
  */
-contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
+contract Converter is IConverter, IReserved, ConfigUser, ReentrancyGuard, Pausable {
 
     // constants
-    uint16 public constant FEE_RATE_BASE = 10000; // The denominator value used when calculating the original value of the feeRate (0.01% = 1)
+    uint16 public constant TEN_THOUSANDS = 10000;
 
     // external contracts
+    address public immutable gmx;
     address public immutable esGmx;
+    address public immutable bnGmx;
     IRewardRouter public immutable rewardRouter;
     address public immutable stakedGmxTracker;
     address public immutable feeGmxTracker;
@@ -45,41 +48,52 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
 
     // key protocol contracts & addresses
     address public immutable GMXkey;
+    address public immutable esGMXkey;
     address public immutable MPkey;
     address public immutable rewards;
     address public treasury;
+    address public operator;
+    address public transferReceiver;
+    address public feeCalculator;
 
-    // state variables    
+    // state variables
     mapping(address => address) public receivers;
-    mapping(address => uint16) public feeRate; // 0.01% = 1
     uint128 public minGmxAmount;
     uint32 public qualifiedRatio; // 0.01% = 1 & can be over 100%
     mapping(address => bool) public isForMpKey;
-    mapping(address => uint256) public receiverActiveAt;
+    address[] public registeredReceivers;
+    mapping(address => bool) public isValidReceiver;
+    mapping(address => mapping(address => uint256)) public convertedAmount;
+    Reserved public feeCalculatorReserved;
 
     constructor(
         address _admin,
         address _config,
         address _GMXkey,
+        address _esGMXkey,
         address _MPkey,
         IRewardRouter _rewardRouter,
         address _stakedGlp,
         address _rewards,
         address _treasury,
-        uint16 _gmxKeyFeeRate,
-        uint16 _mpKeyFeeRate
+        address _transferReceiver,
+        address _feeCalculator
     ) Pausable(_admin) ConfigUser(_config) {
         require(_GMXkey != address(0), "Converter: GMXkey is the zero address");
+        require(_esGMXkey != address(0), "Converter: esGMXkey is the zero address");
         require(_MPkey != address(0), "Converter: MPkey is the zero address");
         require(address(_rewardRouter) != address(0), "Converter: rewardRouter is the zero address");
         require(_stakedGlp != address(0), "Converter: stakedGlp is the zero address");
         require(_rewards != address(0), "Converter: rewards is the zero address");
         require(_treasury != address(0), "Converter: treasury is the zero address");
-        require(_gmxKeyFeeRate <= FEE_RATE_BASE, "Converter: GMXkey fee ratio should be less than or equal to 10000");
-        require(_mpKeyFeeRate <= FEE_RATE_BASE, "Converter: MPkey fee ratio should be less than or equal to 10000");
+        require(_transferReceiver != address(0), "Converter: transferReceiver is the zero address");
+        require(_feeCalculator != address(0), "Converter: feeCalculator is the zero address");
         GMXkey = _GMXkey;
+        esGMXkey = _esGMXkey;
         MPkey = _MPkey;
+        gmx = _rewardRouter.gmx();
         esGmx = _rewardRouter.esGmx();
+        bnGmx = _rewardRouter.bnGmx();
         require(esGmx != address(0), "Converter: esGmx is the zero address");
         rewardRouter = _rewardRouter;
         stakedGmxTracker = _rewardRouter.stakedGmxTracker();
@@ -89,42 +103,52 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
         stakedGlp = _stakedGlp;
         rewards = _rewards;
         treasury = _treasury;
-        feeRate[_GMXkey] = _gmxKeyFeeRate;
-        feeRate[_MPkey] = _mpKeyFeeRate;
+        transferReceiver = _transferReceiver;
+        feeCalculator = _feeCalculator;
+        operator = _admin;
     }
 
     // - config functions - //
 
-    // set treasury address
+    // Sets treasury address
     function setTreasury(address _treasury) external onlyAdmin {
         require(_treasury != address(0), "Converter: treasury is the zero address");
         treasury = _treasury;
     }
 
-    /**
-     * Register the receiver contract to be used for the upgrade
-     * @param newReceiver newly deployed receiver contract
-     */
-    function registerReceiver(address newReceiver, uint256 activeAt) external onlyAdmin {
-        require(newReceiver != address(0), "Converter: newReceiver is the zero address");
-        require(activeAt >= IConfig(config).getUpgradeableAt(), "Converter: activeAt should be later than upgradeable time");
-        receiverActiveAt[newReceiver] = activeAt;
-        emit ReceiverRegistered(newReceiver, activeAt);
+    // Sets operator address
+    function setOperator(address _operator) external onlyAdmin {
+        require(_operator != address(0), "Converter: operator is the zero address");
+        operator = _operator;
+    }
+
+    // Sets transferReceiver address
+    function setTransferReceiver(address _transferReceiver) external onlyAdmin {
+        require(_transferReceiver != address(0), "Converter: transferReceiver is the zero address");
+        transferReceiver = _transferReceiver;
     }
 
     /**
-     * Set how much fee will be charged for the GMXkey and MPkey to be received during the Convert process.
-     * @param _token A fee is charged for the type of token received as this argument. Both GMXkey and MPkey are possible.
-     * @param _feeRate Set how much fee will be charged. It is set in units of 0.01%. 10,000 = 100%
+     * @notice Reserves to set feeCalculator contract.
+     * @param _feeCalculator contract address
+     * @param _at _feeCalculator can be set after this time
+     *
      */
-    function setFeeRate(address _token, uint16 _feeRate) external onlyAdmin {
-        require(_token == GMXkey || _token == MPkey, "Converter: token should be GMXkey or MPkey");
-        require(_feeRate <= FEE_RATE_BASE, "Converter: fee ratio should be less than or equal to 10000");
-        feeRate[_token] = _feeRate;
+    function reserveFeeCalculator(address _feeCalculator, uint256 _at) external onlyAdmin {
+        require(_feeCalculator != address(0), "Converter: feeCalculator is the zero address");
+        require(_at >= IConfig(config).getUpgradeableAt(), "Converter: at should be later");
+        feeCalculatorReserved = Reserved(_feeCalculator, _at);
+        emit ConvertingFeeCalculatorReserved(_feeCalculator, _at);
+    }
+
+    // Sets reserved FeeCalculator contract.
+    function setFeeCalculator() external onlyAdmin {
+        require(feeCalculatorReserved.at != 0 && feeCalculatorReserved.at <= block.timestamp, "Converter: feeCalculator is not yet available");
+        feeCalculator = feeCalculatorReserved.to;
     }
 
     /**
-     * Set whether an account attempting to Convert can do so when the ratio of MP (Multiplier Points) to the staked GMX+esGMX amount in the GMX protocol is above a certain level.
+     * @notice Sets whether an account attempting to Convert can do so when the ratio of MP (Multiplier Points) to the staked GMX+esGMX amount in the GMX protocol is above a certain level.
      * If there are esGMX already staked in the vesting vault, they are included when comparing with this threshold value.
      * @param _minGmxAmount An account must have staked at least this argument's worth of GMX+esGMX in order to Convert.
      * @param _qualifiedRatio As a result, the account can Convert only if the ratio of MP to the staked GMX+esGMX amount is greater than or equal to the value received by this argument. It is set in units of 0.01%. 10,000 = 100%
@@ -133,11 +157,11 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
         minGmxAmount = _minGmxAmount;
         qualifiedRatio = _qualifiedRatio;
     }
-    
+
     // - external state-changing functions - //
 
     /**
-     * From the account that wants to liquidate GMX, esGMX, and MP, this function deploys an ITransferReceiver(receiver) contract that can receive GMX, esGMX, and MP.
+     * @notice From the account that wants to liquidate GMX, esGMX, and MP, this function deploys an ITransferReceiver(receiver) contract that can receive GMX, esGMX, and MP.
      * An account that has already called this function once cannot deploy it again through this function. 
      * If you want to Convert tokens held in an account that has already gone through the process once, you can create another account, 
      * transfer the tokens there first, and then call this function to proceed with the Convert.
@@ -145,32 +169,33 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
     function createTransferReceiver() external nonReentrant whenNotPaused {
         require(receivers[msg.sender] == address(0), "Converter: receiver already created");
 
-        TransferReceiver newReceiver = new TransferReceiver(
-            admin,
-            config,
-            address(this),
-            rewardRouter,
-            stakedGlp,
-            rewards,
-            GMXkey,
-            MPkey
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(transferReceiver),
+            abi.encodeWithSelector(ITransferReceiver(transferReceiver).initialize.selector,
+                operator,
+                config,
+                address(this),
+                rewardRouter,
+                stakedGlp,
+                rewards
+            )
         );
-        receivers[msg.sender] = address(newReceiver);
-        receiverActiveAt[address(newReceiver)] = 1;
 
-        emit ReceiverCreated(msg.sender, address(newReceiver));
+        receivers[msg.sender] = address(proxy);
+        emit ReceiverCreated(msg.sender, address(proxy));
     }
 
     /**
-     * Approve the admin to use the msg.sender's staked tokens, which are to be converted as MPkey only
+     * @notice Approves the admin to use the msg.sender's staked tokens, which are to be converted as MPkey only
+     * @param _receiver address of the receiver contract
      * @param approved boolean value to approve or disapprove
      */
-    function approveMpKeyConversion(bool approved) external {
-        isForMpKey[msg.sender] = approved;
+    function approveMpKeyConversion(address _receiver, bool approved) external onlyAdmin {
+        isForMpKey[_receiver] = approved;
     }
 
     /**
-     * Liquidates the received GMX, esGMX, and MP into GMXkey and MPkey, respectively, by calling the acceptTransfer function of the RewardRouter thru TransferReceiver.
+     * @notice Liquidates the received GMX, esGMX, and MP into GMXkey, esGMXkey and MPkey, respectively, by calling the acceptTransfer function of the RewardRouter thru TransferReceiver.
      * At this time, fee is collected at the specified rate and sent to the treasury.
      */
     function completeConversion() external nonReentrant whenNotPaused {
@@ -182,31 +207,39 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
         // Make the receiver contract call the RewardRouter.acceptTransfer function and handle the side-effects related to esGMX/GLP.
         address _receiver = receivers[msg.sender];
         require(_receiver != address(0), "Converter: receiver is not created yet");
+        
+        _addToRegisteredReceivers(_receiver);
+        
         ITransferReceiver(_receiver).acceptTransfer(msg.sender, false);
 
         // Mint GMXkey and MPkey in amounts corresponding to the received GMX & esGMX and MP, respectively.
-        uint256 gmxAmountReceived = IRewardTracker(stakedGmxTracker).stakedAmounts(_receiver);
-        uint256 mpAmountReceived = IRewardTracker(feeGmxTracker).stakedAmounts(_receiver) - gmxAmountReceived;
+        uint256 gmxAmountReceived = IRewardTracker(stakedGmxTracker).depositBalances(_receiver, gmx);
+        uint256 esGmxAmountReceived = IRewardTracker(stakedGmxTracker).depositBalances(_receiver, esGmx);
+        uint256 mpAmountReceived = IRewardTracker(feeGmxTracker).depositBalances(_receiver, bnGmx);
 
-        require(gmxAmountReceived >= minGmxAmount, "Converter: not enough GMX staked to convert");
+        require(gmxAmountReceived + esGmxAmountReceived >= minGmxAmount, "Converter: not enough GMX staked to convert");
 
         // Check the ratio of pan-GMX tokens & Multiplier Point is higher than standard
-        require(mpAmountReceived * FEE_RATE_BASE / gmxAmountReceived >= qualifiedRatio,
+        require(mpAmountReceived * TEN_THOUSANDS / (gmxAmountReceived + esGmxAmountReceived) >= qualifiedRatio,
             "Converter: gmx/mp ratio is not qualified");
 
         _mintAndTransferFee(msg.sender, GMXkey, gmxAmountReceived);
+        _mintAndTransferFee(msg.sender, esGMXkey, esGmxAmountReceived);
         _mintAndTransferFee(msg.sender, MPkey, mpAmountReceived);
 
-        receiverActiveAt[_receiver] = block.timestamp;
+        convertedAmount[msg.sender][GMXkey] = gmxAmountReceived;
+        convertedAmount[msg.sender][esGMXkey] = esGmxAmountReceived;
+        convertedAmount[msg.sender][MPkey] = mpAmountReceived;
 
-        emit ConvertCompleted(msg.sender, _receiver, gmxAmountReceived, mpAmountReceived);
+        emit ConvertCompleted(msg.sender, _receiver, gmxAmountReceived, esGmxAmountReceived, mpAmountReceived);
     }
 
     /**
-     * This function is designed to mint and provide some MPkey to the DEX pool.
+     * @notice This function is designed to mint and provide some MPkey to the DEX pool.
      * It is acceptable to mint MPkey by locking up GMX, as it is inferior to GMXkey, which is minted by locking up GMX.
+     * @param sender The account that wants to mint MPkey
      */
-    function completeConversionToMpKey(address sender) external onlyAdmin nonReentrant {
+    function completeConversionToMpKey(address sender) external nonReentrant onlyAdmin {
         // At the time of calling this function, the sender's vesting tokens must be zero; 
         // otherwise, the rewardRouter.acceptTransfer function call will fail.
 
@@ -215,27 +248,23 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
         // Make the receiver contract call the RewardRouter.acceptTransfer function and handle the side-effects related to esGMX/GLP.
         address _receiver = receivers[sender];
         require(_receiver != address(0), "Converter: receiver is not created yet");
+        
+        _addToRegisteredReceivers(_receiver);
+        
         ITransferReceiver(_receiver).acceptTransfer(sender, true);
 
         // Mint MPkey in amounts corresponding to the received GMX, esGMX and MP.
         uint256 amountReceived = IRewardTracker(feeGmxTracker).stakedAmounts(_receiver);
         _mintAndTransferFee(sender, MPkey, amountReceived);
 
-        receiverActiveAt[_receiver] = block.timestamp;
 
         emit ConvertForMpCompleted(sender, _receiver, amountReceived);
     }
 
     // - external view functions - //
 
-    /**
-     * Returns whether the receiver has completed the conversion process.
-     * @param _receiver receiver contract address
-     * @return true if the receiver contract is currently in use, meaning it has staked tokens and claimable rewards.
-     */
-    function isActiveReceiver(address _receiver) external view returns (bool) {
-        uint256 activeAt = receiverActiveAt[_receiver];
-        return activeAt > 1 && activeAt <= block.timestamp;
+    function registeredReceiversLength() external view returns (uint256) {
+        return registeredReceivers.length;
     }
 
     // - no external functions called by other key protocol contracts - //
@@ -243,15 +272,21 @@ contract Converter is IConverter, ConfigUser, ReentrancyGuard, Pausable {
     // - internal functions - //
 
     /**
-     * Mint tokens in the requested amount and charge a fee corresponding to the feeRate.
+     * Mints tokens in the requested amount and charge a fee
+     * @param to the account to receive the minted tokens.
      * @param _token the target token for minting and charging fees.
      * @param amountReceived the amount of the target token for minting and charging fees.
      */
     function _mintAndTransferFee(address to, address _token, uint256 amountReceived) internal {
         // Mint _token as much as the amount of the corresponding token received.
-        uint256 fee = amountReceived * feeRate[_token] / FEE_RATE_BASE;
+        uint256 fee = IConvertingFeeCalculator(feeCalculator).calculateConvertingFee(to, amountReceived, _token);
         IERC20(_token).mint(to, amountReceived - fee);
         // Transfer a portion of it to the treasury.
         IERC20(_token).mint(treasury, fee);
+    }
+
+    function _addToRegisteredReceivers(address _receiver) internal {
+        registeredReceivers.push(_receiver);
+        isValidReceiver[_receiver] = true;
     }
 }

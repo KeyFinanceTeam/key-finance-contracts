@@ -6,7 +6,7 @@ import "./common/Adminable.sol";
 
 contract Config is IConfig, Adminable {
 
-    uint256 public constant MIN_DELAY_TIME = 1 weeks;
+    uint256 public constant MIN_DELAY_TIME = 2 days;
 
     uint256 public upgradeDelayTime;
 
