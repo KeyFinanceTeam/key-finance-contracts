@@ -10,4 +10,6 @@ contract ConfigUserInitializable {
         require(_config != address(0), "ConfigUserInitializable: config is the zero address");
         config = _config;
     }
+
+    uint256[64] private __gap;
 }

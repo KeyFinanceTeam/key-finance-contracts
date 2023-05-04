@@ -33,4 +33,6 @@ abstract contract AdminableInitializable {
         admin = candidate;
         candidate = address(0);
     }
+
+    uint256[64] private __gap;
 }

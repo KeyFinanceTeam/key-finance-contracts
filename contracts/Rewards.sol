@@ -31,7 +31,7 @@ contract Rewards is IRewards, IReserved, ConfigUser, ReentrancyGuard, Pausable {
     // constants
     uint16 public constant FEE_PERCENTAGE_BASE = 10000;
     uint16 public constant FEE_PERCENTAGE_MAX = 2500;
-    uint128 public constant FEE_TIER_LENGTH_MAX = 5;
+    uint128 public constant FEE_TIER_LENGTH_MAX = 10;
     uint128 public constant PRECISION = 1e36;
     uint256 public constant PERIOD = 1 weeks;
 
@@ -624,5 +624,7 @@ contract Rewards is IRewards, IReserved, ConfigUser, ReentrancyGuard, Pausable {
         require(success, "Transfer failed");
     }
 
-    receive() external payable {}
+    receive() external payable {
+        require(msg.sender == weth);
+    }
 }

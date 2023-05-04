@@ -29,4 +29,6 @@ abstract contract PausableInitializable is AdminableInitializable {
         paused = false;
         emit Resumed();
     }
+
+    uint256[64] private __gap;
 }

@@ -24,4 +24,11 @@ interface IStaker {
 
     // View functions
     function totalSharesPrevPeriod(address token) external view returns (uint256);
+
+    function GMXkey() external view returns (address);
+    function esGMXkey() external view returns (address);
+    function MPkey() external view returns (address);
+
+    function PERIOD() external view returns (uint256);
+
 }

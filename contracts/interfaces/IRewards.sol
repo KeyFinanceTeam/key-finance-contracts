@@ -10,6 +10,7 @@ interface IRewards {
     function PERIOD() external view returns (uint256);
     function stakedGmxTracker() external view returns (address);
     function feeGmxTracker() external view returns (address);
+    function gmx() external view returns (address);
     function esGmx() external view returns (address);
     function bnGmx() external view returns (address);
     function weth() external view returns (address);
