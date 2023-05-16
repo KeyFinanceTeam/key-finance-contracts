@@ -10,7 +10,7 @@ contract TransferReceiverV2 is TransferReceiver {
     using SafeERC20 for IERC20;
 
     // @dev replace this as a deployed TransferSender contract address before deploying TransferReceiverV2
-    address public constant defaultTransferSender = 0xC9179B1F708D66F2E43caa1aa854Ea984068483a;
+    address public constant defaultTransferSender = 0xc6d79DeE3049319eDdB52F040A64167396a2928d;
 
     function version() external view virtual override returns (uint256) {
         return 1;
