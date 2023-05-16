@@ -7,13 +7,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract RewardClaimHelper is ReentrancyGuard {
 
-    address public GMXkey;
-    address public MPkey;
-
-    constructor(address _GMXkey, address _MPkey) {
-        GMXkey = _GMXkey;
-        MPkey = _MPkey;
-    }
+    constructor() {}
 
     function claimAndUpdateRewardMulti(address[] memory transferReceivers, address feeTo) external nonReentrant {
         for (uint256 i = 0; i < transferReceivers.length; i++) {

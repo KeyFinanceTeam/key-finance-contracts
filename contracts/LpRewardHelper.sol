@@ -36,43 +36,6 @@ contract LpRewardHelper is ILpRewardHelper {
         }
     }
 
-    function collectibleFee(ILpStaker lpStaker, uint256 tokenId) external view returns (uint256 tokensOwed0, uint256 tokensOwed1) {
-        address pool = lpStaker.pool();
-        (tokensOwed0, tokensOwed1) = _collectibleFee(pool, tokenId);
-    }
-
-    function collectibleFees(ILpStaker lpStaker, uint256[] memory tokenIds) external view returns (uint256 tokensOwed0, uint256 tokensOwed1) {
-        address pool = lpStaker.pool();
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            (uint256 _tokensOwed0, uint256 _tokensOwed1) = _collectibleFee(pool, tokenIds[i]);
-            tokensOwed0 += _tokensOwed0;
-            tokensOwed1 += _tokensOwed1;
-        }
-    }
-
-    function _collectibleFee(address pool, uint256 tokenId) internal view returns (uint256 tokensOwed0, uint256 tokensOwed1) {
-        (, , , , , int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 prevFeeGrowthInside0LastX128, uint256 prevFeeGrowthInside1LastX128, , ) = 
-            INonfungiblePositionManager(nonfungiblePositionManager).positions(tokenId);
-
-        if (liquidity > 0) {
-            (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) =
-                IUniswapV3Pool(pool).positions(computePositionKey(address(nonfungiblePositionManager), tickLower, tickUpper));
-
-            tokensOwed0 = 
-                Math.mulDiv(
-                    feeGrowthInside0LastX128 - prevFeeGrowthInside0LastX128,
-                    liquidity,
-                    Q128
-                );
-            tokensOwed1 = 
-                Math.mulDiv(
-                    feeGrowthInside1LastX128 - prevFeeGrowthInside1LastX128,
-                    liquidity,
-                    Q128
-                );
-        }
-    }
-
     function computePositionKey(
         address owner,
         int24 tickLower,

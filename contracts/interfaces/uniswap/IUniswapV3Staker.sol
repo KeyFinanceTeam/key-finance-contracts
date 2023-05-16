@@ -68,6 +68,10 @@ interface IUniswapV3Staker is IERC721Receiver, IMulticall {
             int24 tickUpper
         );
 
+    function admin() external view returns (address);
+    function alloweds(uint256 index) external view returns (address);
+    function setAlloweds(address[3] memory _alloweds) external;
+
     /// @notice Returns information about a staked liquidity NFT
     /// @param tokenId The ID of the staked token
     /// @param incentiveId The ID of the incentive for which the token is staked

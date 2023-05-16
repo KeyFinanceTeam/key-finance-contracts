@@ -35,6 +35,7 @@ interface ILpStaker {
     function unstakeTokens(uint256[] memory tokenIds, uint16 keyCount) external;
     function unstakeTokenOnce(uint256 tokenId) external;
     function extendStaking(uint256[] memory tokenIds) external;
+    function extendStakingAndUnstakeTokens(uint256[] memory tokenIds) external;
     function claimAllReward(uint256[] memory tokenIds, uint16 keyCount) external;
     function collectFee(uint256[] memory tokenIds) external;
     function getNumberOfTokensStaked(address owner) external view returns (uint256);

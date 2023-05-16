@@ -86,7 +86,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
         _version = 0;
     }
 
-    modifier onlyTransferSender() {
+    modifier onlyTransferSender() virtual {
         require(msg.sender == transferSender, "only transferSender");
         _;
     }
@@ -136,7 +136,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
      * Transfers esGMXkey, MPkey, and WETH fees to the calling account.
      * @param feeTo Account to transfer fee to.
      */
-    function claimAndUpdateReward(address feeTo) external nonReentrant whenNotPaused {
+    function claimAndUpdateReward(address feeTo) external virtual nonReentrant whenNotPaused {
         uint256 wethBalanceDiff = IERC20(weth).balanceOf(address(this));
         rewardRouter.handleRewards(false, false, true, true, true, true, false);
         wethBalanceDiff = IERC20(weth).balanceOf(address(this)) - wethBalanceDiff;
@@ -148,7 +148,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
      * @notice Calls signalTransfer to make 'to' account able to accept transfer.
      * @param to Account to transfer tokens to.
      */
-    function signalTransfer(address to) external nonReentrant whenNotPaused onlyTransferSender {
+    function signalTransfer(address to) external virtual nonReentrant whenNotPaused onlyTransferSender {
         require(accepted, "TransferReceiver: not yet accepted");
         _signalTransfer(to);
     }
@@ -192,7 +192,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
     /**
      * Call RewardRouter.signalTransfer to notify the new receiver contract 'to' that it can accept the transfer.
      */
-    function _signalTransfer(address to) private {
+    function _signalTransfer(address to) internal virtual {
         rewardRouter.signalTransfer(to);
         // Approval is needed for a later upgrade of this contract (enabling transfer process including signalTransfer & acceptTransfer).
         // According to the RewardTracker contract, this allowance can only be used for staking GMX to stakedGmxTracker itself.

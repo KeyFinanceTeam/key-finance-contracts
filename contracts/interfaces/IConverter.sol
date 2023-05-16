@@ -26,8 +26,9 @@ interface IConverter {
     function registeredReceivers(uint256 index) external view returns (address);
     function registeredReceiversLength() external view returns (uint256);
     function isValidReceiver(address _receiver) external view returns (bool);
-    function convertedAmount(address accountn, address token) external view returns (uint256);
+    function convertedAmount(address account, address token) external view returns (uint256);
     function feeCalculatorReserved() external view returns (address, uint256);
+    function setTransferReceiver(address _transferReceiver) external;
     function setQualification(uint128 _minGmxAmount, uint32 _qualifiedRatio) external;
     function createTransferReceiver() external;
     function approveMpKeyConversion(address _receiver, bool _approved) external;
