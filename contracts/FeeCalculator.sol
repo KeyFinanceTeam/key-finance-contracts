@@ -39,7 +39,7 @@ contract FeeCalculator is IStakingFeeCalculator, IConvertingFeeCalculator {
         address, // account
         uint256 amount,
         address convertingToken
-    ) public view returns (uint256) {
+    ) public virtual view returns (uint256) {
         if (convertingToken == gmxKey) {
             return amount * GMXKEY_CONVERTING_FEE_PERCENTAGE / FEE_PERCENTAGE_BASE;
         } else {
