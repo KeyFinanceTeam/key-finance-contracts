@@ -60,7 +60,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
         IRewardRouter _rewardRouter,
         address _stakedGlp,
         address _rewards
-    ) external initializer {
+    ) public virtual initializer {
         require(stakedGlpTracker == address(0), "TransferReceiver: already initialized");
 
         __UUPSUpgradeable_init();
@@ -136,7 +136,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
      * Transfers esGMXkey, MPkey, and WETH fees to the calling account.
      * @param feeTo Account to transfer fee to.
      */
-    function claimAndUpdateReward(address feeTo) external virtual nonReentrant whenNotPaused {
+    function claimAndUpdateReward(address feeTo) public virtual nonReentrant whenNotPaused {
         uint256 wethBalanceDiff = IERC20(weth).balanceOf(address(this));
         rewardRouter.handleRewards(false, false, true, true, true, true, false);
         wethBalanceDiff = IERC20(weth).balanceOf(address(this)) - wethBalanceDiff;
@@ -160,7 +160,7 @@ contract TransferReceiver is ITransferReceiver, Initializable, UUPSUpgradeable, 
      * @param sender Account that transferred tokens to this contract.
      * @param _isForMpKey Whether the transferred tokens are for minting MPkey.
      */
-    function acceptTransfer(address sender, bool _isForMpKey) external nonReentrant whenNotPaused {
+    function acceptTransfer(address sender, bool _isForMpKey) public virtual nonReentrant whenNotPaused {
         require(msg.sender == converter, "only converter");
 
         // Transfers all remaining staked tokens, possibly GMX, esGMX, GLP, etc.

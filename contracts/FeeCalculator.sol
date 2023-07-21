@@ -31,7 +31,7 @@ contract FeeCalculator is IStakingFeeCalculator, IConvertingFeeCalculator {
         uint256 amount,
         address, // stakingToken
         address // rewardToken
-    ) public pure returns (uint256) {
+    ) public virtual view returns (uint256) {
         return amount * DEFAULT_STAKING_FEE_PERCENTAGE / FEE_PERCENTAGE_BASE;
     }
 

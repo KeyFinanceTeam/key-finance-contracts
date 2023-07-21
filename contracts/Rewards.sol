@@ -231,13 +231,13 @@ contract Rewards is IRewards, IReserved, ConfigUser, ReentrancyGuard, Pausable {
      * @notice Initializes the last record for the receiver's deposit balance for esGmx and bnGmx.
      */
     function initTransferReceiver() external {
-        require(IConverter(converter).isValidReceiver(msg.sender), "Rewards: receiver is not a valid receiver");
-        require(!ITransferReceiver(msg.sender).accepted(), "Rewards: receiver has already accepted the transfer");
-        uint256 stakedGmxAmount = IRewardTracker(stakedGmxTracker).depositBalances(msg.sender, gmx);
+        require(_isCalledByValidReceiver(), "Rewards: invalid receiver");
+        require(!ITransferReceiver(msg.sender).accepted(), "Rewards: already accepted");
+        uint256 stakedGmxAmount = _stakedAmount(stakedGmxTracker, gmx);
         lastDepositBalancesForReceivers[msg.sender][gmx] = stakedGmxAmount;
-        uint256 stakedEsGmxAmount = IRewardTracker(stakedGmxTracker).depositBalances(msg.sender, esGmx);
+        uint256 stakedEsGmxAmount = _stakedAmount(stakedGmxTracker, esGmx);
         lastDepositBalancesForReceivers[msg.sender][esGmx] = stakedEsGmxAmount;
-        uint256 stakedMpAmount = IRewardTracker(feeGmxTracker).depositBalances(msg.sender, bnGmx);
+        uint256 stakedMpAmount = _stakedAmount(feeGmxTracker, bnGmx);
         lastDepositBalancesForReceivers[msg.sender][bnGmx] = stakedMpAmount;
         lastUpdatedAt[msg.sender] = block.timestamp;
         emit ReceiverInitialized(msg.sender, stakedGmxAmount, stakedEsGmxAmount, stakedMpAmount);
@@ -252,8 +252,8 @@ contract Rewards is IRewards, IReserved, ConfigUser, ReentrancyGuard, Pausable {
      * @param feeTo The address that receives the fee.
      */
     function updateAllRewardsForTransferReceiverAndTransferFee(address feeTo) external nonReentrant whenNotPaused {
-        require(IConverter(converter).isValidReceiver(msg.sender), "Rewards: msg.sender is not a valid receiver");
-        require(ITransferReceiver(msg.sender).accepted(), "Rewards: only transferFeeReceiver can be used for this function");
+        require(_isCalledByValidReceiver(), "Rewards: invalid receiver");
+        require(ITransferReceiver(msg.sender).accepted(), "Rewards: not accepted yet");
 
         if (_isFirstInCurrentPeriod()) _initializePeriod();
 
@@ -262,11 +262,11 @@ contract Rewards is IRewards, IReserved, ConfigUser, ReentrancyGuard, Pausable {
         uint256 wethAmountToTransfer = _updateWethRewardsForTransferReceiverAndTransferFee(msg.sender, feeTo); // weth
 
         // Update the receiver's records for later call
-        uint256 stakedGmxAmount = IRewardTracker(stakedGmxTracker).depositBalances(msg.sender, gmx);
+        uint256 stakedGmxAmount = _stakedAmount(stakedGmxTracker, gmx);
         if (stakedGmxAmount > lastDepositBalancesForReceivers[msg.sender][gmx]) lastDepositBalancesForReceivers[msg.sender][gmx] = stakedGmxAmount;
-        uint256 stakedEsGmxAmount = IRewardTracker(stakedGmxTracker).depositBalances(msg.sender, esGmx);
+        uint256 stakedEsGmxAmount = _stakedAmount(stakedGmxTracker, esGmx);
         if (stakedEsGmxAmount > lastDepositBalancesForReceivers[msg.sender][esGmx]) lastDepositBalancesForReceivers[msg.sender][esGmx] = stakedEsGmxAmount;
-        uint256 stakedMpAmount = IRewardTracker(feeGmxTracker).depositBalances(msg.sender, bnGmx);
+        uint256 stakedMpAmount = _stakedAmount(feeGmxTracker, bnGmx);
         if (stakedMpAmount > lastDepositBalancesForReceivers[msg.sender][bnGmx]) lastDepositBalancesForReceivers[msg.sender][bnGmx] = stakedMpAmount;
         lastUpdatedAt[msg.sender] = block.timestamp;
 
@@ -274,6 +274,14 @@ contract Rewards is IRewards, IReserved, ConfigUser, ReentrancyGuard, Pausable {
     }
 
     // - internal functions - //
+
+    function _stakedAmount(address _rewardTracker, address _token) internal view returns (uint256) {
+        return IRewardTracker(_rewardTracker).depositBalances(msg.sender, _token);
+    }
+
+    function _isCalledByValidReceiver() internal view returns (bool) {
+        return IConverter(converter).isValidReceiver(msg.sender);
+    }
 
     /**
      * Returns true if it's first reward update call in the current period (period based on the current block).

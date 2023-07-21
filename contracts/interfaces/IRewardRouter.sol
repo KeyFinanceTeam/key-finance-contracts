@@ -16,7 +16,10 @@ interface IRewardRouter {
     function gmxVester() external view returns (address);
     function glpVester() external view returns (address);
 
+    function stakeGmx(uint256 _amount) external;
     function stakeEsGmx(uint256 _amount) external;
+
+    function unstakeGmx(uint256 _amount) external;
     
     function signalTransfer(address _receiver) external;
     function acceptTransfer(address _sender) external;

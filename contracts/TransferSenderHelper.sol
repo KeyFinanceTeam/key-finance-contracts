@@ -48,7 +48,7 @@ contract TransferSenderHelper {
         require(feeGmxTracker != address(0), "TransferSenderHelper: feeGmxTracker is the zero address");
     }
 
-    function receiverList() public view returns (ReceiverInfo[] memory)
+    function receiverList(address userAddress) public view returns (ReceiverInfo[] memory)
     {
         IConverter _converter = IConverter(converter);
         ITransferSender _transferSender = ITransferSender(transferSender);
@@ -56,26 +56,47 @@ contract TransferSenderHelper {
         uint256 receiverLength = _converter.registeredReceiversLength();
         uint256 unwrappedLength = _transferSender.unwrappedReceiverLength();
 
-        ReceiverInfo[] memory receivers = new ReceiverInfo[](receiverLength - unwrappedLength);
+        ReceiverInfo[] memory receivers = new ReceiverInfo[](receiverLength - unwrappedLength + 1);
         uint256 j = 0;
         for (uint256 i = 0; i < receiverLength; i++) {
             address _transferReceiver = _converter.registeredReceivers(i);
-            if (_converter.isValidReceiver(_transferReceiver) &&
-                !_transferSender.isUnwrappedReceiver(_transferReceiver)) {
-                (address _lockAccount, uint256 _lockStartedAt) = _transferSender.addressLock(_transferReceiver);
-
-                ReceiverInfo memory _receiverInfo = ReceiverInfo(
-                    address(_transferReceiver),
-                    IRewardTracker(stakedGmxTracker).depositBalances(_transferReceiver, gmx),
-                    IRewardTracker(stakedGmxTracker).depositBalances(_transferReceiver, esGmx),
-                    IRewardTracker(feeGmxTracker).depositBalances(_transferReceiver, bnGmx),
-                    _lockAccount,
-                    _lockStartedAt
-                );
-                receivers[j++] = _receiverInfo;
+            if (_converter.isValidReceiver(_transferReceiver)) {
+                if (!_transferSender.isUnwrappedReceiver(_transferReceiver) ||
+                    rewardRouter.pendingReceivers(_transferReceiver) == userAddress) {
+                    (address _lockAccount, uint256 _lockStartedAt) = _transferSender.addressLock(_transferReceiver);
+                    ReceiverInfo memory _receiverInfo = ReceiverInfo(
+                        address(_transferReceiver),
+                        IRewardTracker(stakedGmxTracker).depositBalances(_transferReceiver, gmx),
+                        IRewardTracker(stakedGmxTracker).depositBalances(_transferReceiver, esGmx),
+                        IRewardTracker(feeGmxTracker).depositBalances(_transferReceiver, bnGmx),
+                        _lockAccount,
+                        _lockStartedAt
+                    );
+                    receivers[j++] = _receiverInfo;
+                }
             }
         }
         return receivers;
     }
 
+    function receiverNotAccepted() public view returns (ReceiverInfo memory) {
+        ITransferSender _transferSender = ITransferSender(transferSender);
+        uint256 unwrappedLength = _transferSender.unwrappedReceiverLength();
+        for (uint256 i = 0; i < unwrappedLength; i++) {
+            address _receiver = _transferSender.unwrappedReceivers(i);
+            address _account = rewardRouter.pendingReceivers(_receiver);
+            if (_account != address(0) && _account == msg.sender) {
+                ReceiverInfo memory _receiverInfo = ReceiverInfo(
+                    address(_receiver),
+                    IRewardTracker(stakedGmxTracker).depositBalances(_receiver, gmx),
+                    IRewardTracker(stakedGmxTracker).depositBalances(_receiver, esGmx),
+                    IRewardTracker(feeGmxTracker).depositBalances(_receiver, bnGmx),
+                    _account,
+                    0
+                );
+                return _receiverInfo;
+            }
+        }
+        return ReceiverInfo(address(0), 0, 0, 0, address(0), 0);
+    }
 }

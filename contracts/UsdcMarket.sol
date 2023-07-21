@@ -9,13 +9,14 @@ import "./common/ConfigUser.sol";
 import "./LinkedList.sol";
 import "./interfaces/IReserved.sol";
 
-contract Market is IMarket, Adminable, ConfigUser, IReserved {
+contract UsdcMarket is IMarket, Adminable, ConfigUser, IReserved {
     using SortedArrays for SortedArrays.SortedArray;
     using LinkedList for LinkedList.List;
 
-    IERC20 public constant currency = IERC20(0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a); // use GMX token as currency
+    IERC20 public constant currency = IERC20(0xaf88d065e77c8cC2239327C5EDb3A432268e5831); // use USDC token as currency
     uint256 public constant MIN_AMOUNT = 1e18;
     uint256 public constant TICK_TO_CURRENCY = 10000; // 1 tick = 0.0001 by unit of currency
+    uint256 public constant DENOMINATOR_FOR_6_DECIMALS = 1e12;
 
     IERC20 public token;
     address public treasury;
@@ -149,8 +150,8 @@ contract Market is IMarket, Adminable, ConfigUser, IReserved {
     }
 
     function _matchOrders(LinkedList.List storage _orders, uint256 _amount, uint256 _loop, bool _bidAsk) private returns (uint256, uint256) {
-        for (uint256 j = _orders.head; j != 0;) {
-            (uint256 _id,,uint256 next_j) = _orders.get(j);
+        for (uint256 j = _orders.head; j != 0; j = _orders.nodes[j].next) {
+            (uint256 _id,,) = _orders.get(j);
             Order storage _o = orderIdMap[_id];
             uint256 _r = _getRemainingAmount(_o);
             if (_amount >= _r) {
@@ -163,7 +164,6 @@ contract Market is IMarket, Adminable, ConfigUser, IReserved {
                 break;
             }
             if (--_loop == 0) break;
-            j = next_j;
         }
         return (_amount, _loop);
     }
@@ -208,7 +208,7 @@ contract Market is IMarket, Adminable, ConfigUser, IReserved {
 
         // Transfer the appropriate amount of token depending on whether it's a bid or ask order
         IERC20 tokenToTransfer = _bidAsk ? currency : token;
-        uint256 amountToTransfer = _bidAsk ? _amount * _price / TICK_TO_CURRENCY : _amount;
+        uint256 amountToTransfer = _bidAsk ? _amount * _price / TICK_TO_CURRENCY / DENOMINATOR_FOR_6_DECIMALS : _amount;
         tokenToTransfer.transferFrom(msg.sender, address(this), amountToTransfer);
         uint256 _id = userOrders[msg.sender].insert(_orderId);
         userOrdersOrderIdToIndex[_orderId] = _id;
@@ -241,20 +241,20 @@ contract Market is IMarket, Adminable, ConfigUser, IReserved {
 
     function _transferTokensMaker(Order storage _order, uint256 _amount) private {
         IERC20 tokenToTransfer = _order.bidAsk ? token : currency;
-        uint256 _amountToTransfer = _order.bidAsk ? _amount : _amount * _order.price / TICK_TO_CURRENCY;
+        uint256 _amountToTransfer = _order.bidAsk ? _amount : _amount * _order.price / TICK_TO_CURRENCY / DENOMINATOR_FOR_6_DECIMALS;
         uint256 _fee = _order.bidAsk ?
-            IMarketFeeCalculator(feeCalculator).calculateMarketBuyerFee(_order.maker, address(token), _amountToTransfer) :
-            IMarketFeeCalculator(feeCalculator).calculateMarketSellerFee(_order.maker, address(currency), _amountToTransfer);
+        IMarketFeeCalculator(feeCalculator).calculateMarketBuyerFee(_order.maker, address(token), _amountToTransfer) :
+        IMarketFeeCalculator(feeCalculator).calculateMarketSellerFee(_order.maker, address(currency), _amountToTransfer);
         tokenToTransfer.transferFrom(msg.sender, _order.maker, _amountToTransfer - _fee);
         tokenToTransfer.transferFrom(msg.sender, treasury, _fee);
     }
 
     function _transferTokensTaker(Order storage _order, address _taker, uint256 _amount) private {
         IERC20 tokenToTransfer = _order.bidAsk ? currency : token;
-        uint256 _amountToTransfer = _order.bidAsk ? _amount * _order.price / TICK_TO_CURRENCY : _amount;
+        uint256 _amountToTransfer = _order.bidAsk ? _amount * _order.price / TICK_TO_CURRENCY / DENOMINATOR_FOR_6_DECIMALS : _amount;
         uint256 _fee = _order.bidAsk ?
-            IMarketFeeCalculator(feeCalculator).calculateMarketSellerFee(_taker, address(currency), _amountToTransfer) :
-            IMarketFeeCalculator(feeCalculator).calculateMarketBuyerFee(_taker, address(token), _amountToTransfer);
+        IMarketFeeCalculator(feeCalculator).calculateMarketSellerFee(_taker, address(currency), _amountToTransfer) :
+        IMarketFeeCalculator(feeCalculator).calculateMarketBuyerFee(_taker, address(token), _amountToTransfer);
         tokenToTransfer.transfer(_taker, _amountToTransfer - _fee);
         tokenToTransfer.transfer(treasury, _fee);
     }
@@ -282,7 +282,7 @@ contract Market is IMarket, Adminable, ConfigUser, IReserved {
 
     function _returnTokensToMaker(Order memory _order) private {
         if (_order.bidAsk) {
-            currency.transfer(_order.maker, _getRemainingAmount(_order) * _order.price / TICK_TO_CURRENCY);
+            currency.transfer(_order.maker, _getRemainingAmount(_order) * _order.price / TICK_TO_CURRENCY / DENOMINATOR_FOR_6_DECIMALS);
         } else {
             token.transfer(_order.maker, _getRemainingAmount(_order));
         }

@@ -84,7 +84,7 @@ contract Staker is IStaker, ReentrancyGuard, Pausable {
         require(amount > 0, "Staker: amount is 0");
 
         uint256 _balance = userBalance[msg.sender][token];
-        require(_balance >= amount, "Staker: insufficient balance");
+        require(_isAmountUnstakable(token, _balance, amount), "Staker: insufficient balance");
 
         // update totalSharesByPeriod
         _updateTotalSharesByPeriod(token);
@@ -159,6 +159,10 @@ contract Staker is IStaker, ReentrancyGuard, Pausable {
      */
     function _isStakable(address token) internal view returns (bool) {
         return token == GMXkey || token == esGMXkey || token == MPkey;
+    }
+
+    function _isAmountUnstakable(address, uint256 _userBalance, uint256 _amount) internal virtual view returns (bool) {
+        return _userBalance >= _amount;
     }
 
     function _updateTotalSharesByPeriod(address token) internal {

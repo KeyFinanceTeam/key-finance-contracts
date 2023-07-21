@@ -28,7 +28,7 @@ contract TransferReceiverV2 is TransferReceiver {
      * Transfers esGMXkey, MPkey, and WETH fees to the calling account.
      * @param feeTo Account to transfer fee to.
      */
-    function claimAndUpdateReward(address feeTo) external override nonReentrant whenNotPaused {
+    function claimAndUpdateReward(address feeTo) public virtual override nonReentrant whenNotPaused {
         _validateReceiver();
         uint256 wethBalanceDiff = IERC20(weth).balanceOf(address(this));
         rewardRouter.handleRewards(false, false, true, true, true, true, false);
@@ -40,7 +40,7 @@ contract TransferReceiverV2 is TransferReceiver {
     /**
      * @notice claimAndUpdateReward which guarantees unwrap by TransferSender even in paused state
      */
-    function claimAndUpdateRewardFromTransferSender(address feeTo) external virtual nonReentrant onlyTransferSender {
+    function claimAndUpdateRewardFromTransferSender(address feeTo) public virtual nonReentrant onlyTransferSender {
         _validateReceiver();
         uint256 wethBalanceDiff = IERC20(weth).balanceOf(address(this));
         if (paused) {

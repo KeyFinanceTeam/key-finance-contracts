@@ -3,6 +3,7 @@ pragma solidity =0.8.19;
 
 import "./FeeCalculator.sol";
 import "./interfaces/ITransferSenderFeeCalculator.sol";
+import "./interfaces/IMarketFeeCalculator.sol";
 
 contract FeeCalculatorV2 is FeeCalculator, ITransferSenderFeeCalculator, IMarketFeeCalculator {
 
